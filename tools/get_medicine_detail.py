@@ -13,7 +13,7 @@ SCHEMA = FunctionSchema(
         "own name, their city, or asked what Mr. Med is — that is the pharmacy company, "
         "not a medicine; answer without tools. "
         "ONLY CALL when the user explicitly asked for price/stock/info on a named "
-        "medicine product (e.g. Glutone, Oxiage LG, Crocin). "
+        "medicine product the user named (brand or generic). "
         "Returns stock_quantity (exact units) and bulk_offer_line when applicable."
     ),
     properties={
@@ -21,7 +21,7 @@ SCHEMA = FunctionSchema(
             "type": "string",
             "description": (
                 "Exact medicine brand or generic the user asked to look up — e.g. "
-                "'Glutone 1000', 'Oxiage LG Tablet'. Never 'Mr. Med', 'MrMed', or company names."
+                "Exact name the user asked about. Never 'Mr. Med', 'MrMed', or company names."
             ),
         },
     },
