@@ -32,7 +32,7 @@ SYSTEM_PROMPT = (
     "Talk in English in an INDIAN accent AT ALL COSTS."
 )
 
-from vertex_config import vertex_location, vertex_model, vertex_voice
+from vertex_config import log_vertex_llm_config, vertex_location, vertex_model, vertex_voice
 
 VERTEX_LOCATION = vertex_location()
 VERTEX_MODEL = vertex_model()
@@ -84,9 +84,7 @@ def _apply_webrtc_runner_patches() -> None:
 async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> None:
     credentials_json, project_id = load_vertex_credentials()
 
-    logger.info(
-        f"Vertex Live: project={project_id} location={VERTEX_LOCATION} model={VERTEX_MODEL}"
-    )
+    log_vertex_llm_config(logger, project_id=project_id)
 
     llm = GeminiLiveVertexLLMService(
         credentials=credentials_json,

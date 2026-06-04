@@ -25,7 +25,7 @@ from tools import TOOLS_SCHEMA, register_tools
 
 load_dotenv(override=True)
 
-from vertex_config import vertex_location, vertex_model, vertex_voice
+from vertex_config import log_vertex_llm_config, vertex_location, vertex_model, vertex_voice
 from vertex_credentials import load_vertex_credentials
 
 from pipecat.audio.filters.rnnoise_filter import RNNoiseFilter
@@ -416,9 +416,8 @@ async def run_bot(
     temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
     audio_in_rate, audio_out_rate = _audio_sample_rates(runner_args)
 
-    logger.info(
-        f"Vertex Live: project={project_id} location={location} model={model} voice={voice}"
-    )
+    logger.info(f"Initializing Vertex Live LLM for {mode} call (project={project_id})")
+    log_vertex_llm_config(logger, project_id=project_id)
 
     llm = GeminiLiveVertexLLMService(
         credentials=credentials_json,
@@ -564,6 +563,14 @@ if __name__ == "__main__":
     from pipecat.runner.run import app, main
 
     _register_dialout_route(app)
+
+    try:
+        _, startup_project_id = load_vertex_credentials()
+    except ValueError as exc:
+        startup_project_id = None
+        logger.warning(f"Vertex credentials unavailable at startup: {exc}")
+    logger.info("=== Vertex Live configuration (server startup) ===")
+    log_vertex_llm_config(logger, project_id=startup_project_id)
 
     exotel_mode = _is_exotel_mode()
 
