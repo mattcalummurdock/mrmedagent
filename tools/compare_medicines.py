@@ -6,8 +6,9 @@ from ._cube import flatten_cube_rows, run_cube
 SCHEMA = FunctionSchema(
     name="compare_medicines",
     description=(
-        "Compare two medicines the user named side by side: price, form, "
-        "therapeutic class, prescription requirement, and stock status."
+        "Compare two PHARMACEUTICAL PRODUCTS the user named. "
+        "DO NOT CALL unless the user explicitly asked to compare two named medicines. "
+        "Never use for Mr. Med/MrMed or company names."
     ),
     properties={
         "name_a": {

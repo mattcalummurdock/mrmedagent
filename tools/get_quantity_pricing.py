@@ -6,9 +6,10 @@ from ._cube import run_cube
 SCHEMA = FunctionSchema(
     name="get_quantity_pricing",
     description=(
-        "Get quantity-based or per-unit pricing for upselling when the user is "
-        "booking or asking about bulk savings. Use after get_medicine_detail when "
-        "discussing how many units to buy."
+        "Get quantity/bulk pricing for a medicine already looked up. "
+        "DO NOT CALL unless the user asked about quantity/bulk pricing for that "
+        "specific medicine and you have medicine_id from get_medicine_detail. "
+        "Never call for Mr. Med company questions or during intake."
     ),
     properties={
         "medicine_id": {

@@ -6,10 +6,11 @@ from ._cube import attach_bulk_pricing, flatten_cube_rows, run_cube
 SCHEMA = FunctionSchema(
     name="get_alternatives",
     description=(
-        "Find in-stock substitute medicines when the user is booking and wants "
-        "cheaper or equivalent alternatives. Each alternative may include "
-        "bulk_offer_line — you MUST mention it with the pack price when present. "
-        "Requires medicine_id from get_medicine_detail."
+        "Find in-stock substitute medicines. "
+        "DO NOT CALL unless the user explicitly asked for substitutes/cheaper options "
+        "for a medicine you already identified via get_medicine_detail on that same drug. "
+        "Never call for Mr. Med/MrMed company questions. "
+        "Requires medicine_id from a prior get_medicine_detail on a real product."
     ),
     properties={
         "medicine_id": {

@@ -6,8 +6,10 @@ from ._cube import flatten_cube_rows, run_cube
 SCHEMA = FunctionSchema(
     name="get_drug_interactions",
     description=(
-        "List known drug interactions for a medicine already identified via "
-        "get_medicine_detail."
+        "List drug interactions for a medicine. "
+        "DO NOT CALL unless the user explicitly asked about interactions for a "
+        "named medicine you identified via get_medicine_detail. "
+        "Never call for Mr. Med/MrMed or general company questions."
     ),
     properties={
         "medicine_id": {

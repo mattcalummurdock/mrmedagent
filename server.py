@@ -1,7 +1,7 @@
 import atexit
 import asyncio
 import html
-import inspect 
+import inspect
 import json
 import os
 import sys
@@ -25,6 +25,9 @@ from tools import TOOLS_SCHEMA, register_tools
 
 load_dotenv(override=True)
 
+from vertex_config import vertex_location, vertex_model, vertex_voice
+from vertex_credentials import load_vertex_credentials
+
 from pipecat.audio.filters.rnnoise_filter import RNNoiseFilter
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -45,14 +48,13 @@ from pipecat.runner.utils import (
     create_transport,
     parse_telephony_websocket,
 )
-from pipecat.services.google.gemini_live.llm import GeminiLiveLLMService
+from pipecat.services.google.gemini_live.vertex.llm import GeminiLiveVertexLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams
 
 logger.remove(0)
 logger.add(sys.stderr, level="DEBUG")
 
-DEFAULT_GEMINI_MODEL = "models/gemini-3.1-flash-live-preview"
 DEFAULT_PORT = 7860
 IST = timezone(timedelta(hours=5, minutes=30))
 STUN_SERVER = "stun:stun.l.google.com:19302"
@@ -72,7 +74,7 @@ transport_params = {
         audio_out_enabled=True,
         add_wav_header=False,
         vad_analyzer=SileroVADAnalyzer(
-            params=VADParams(start_secs=0.3, stop_secs=0.2),
+            params=VADParams(start_secs=0.3, stop_secs=0.3),
         ),
     ),
 }
@@ -291,15 +293,6 @@ def _apply_webrtc_runner_patches():
     )
 
 
-def _get_gemini_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        api_key = os.getenv("GOOGLE_API_KEY", "").strip()
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY must be set in .env")
-    return api_key
-
-
 def get_current_datetime_info() -> dict:
     now = datetime.now(IST)
     tomorrow = now + timedelta(days=1)
@@ -352,14 +345,16 @@ def build_greeting_developer_message(session: CallSession) -> str:
             name = str(session.outbound_context.get("name") or "there")
         return (
             f'Say exactly: "Hello, am I speaking with {name}?" '
-            "Follow AUDIO PROFILE: stern tone, neutral Indian accent (not too thick), no excited modulations. "
+            "Speak English with a THICK unmistakable Indian accent — stern tone, "
+            "never American/British/neutral foreign accent. "
             "One sentence only — do not introduce yourself "
             "or mention Mr. Med or any medicine yet. Wait for their answer."
         )
     return (
         'Say exactly: "Hi, this is Sarah from Mr. Med — may I know your name please?" '
-        "Follow AUDIO PROFILE: stern tone, neutral Indian accent (not too thick), no excited modulations. "
-        "One sentence only — do not ask how you can help yet."
+        "Speak English with a THICK unmistakable Indian accent — stern tone, "
+        "never American/British/neutral foreign accent. "
+        "One sentence only — do not ask how you can help or mention any medicine."
     )
 
 
@@ -414,15 +409,22 @@ async def run_bot(
         f"(phone={session.customer_phone}, sid={session.call_sid})"
     )
 
-    api_key = _get_gemini_api_key()
-    model = os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip()
-    voice = os.getenv("GEMINI_VOICE_NAME", "zephyr").strip()
+    credentials_json, project_id = load_vertex_credentials()
+    location = vertex_location()
+    model = vertex_model()
+    voice = vertex_voice()
     temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
     audio_in_rate, audio_out_rate = _audio_sample_rates(runner_args)
 
-    llm = GeminiLiveLLMService(
-        api_key=api_key,
-        settings=GeminiLiveLLMService.Settings(
+    logger.info(
+        f"Vertex Live: project={project_id} location={location} model={model} voice={voice}"
+    )
+
+    llm = GeminiLiveVertexLLMService(
+        credentials=credentials_json,
+        project_id=project_id,
+        location=location,
+        settings=GeminiLiveVertexLLMService.Settings(
             model=model,
             voice=voice,
             temperature=temperature,
