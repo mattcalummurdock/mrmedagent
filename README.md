@@ -12,6 +12,8 @@ Exotel  --wss-->  Cloud Run (this repo)  --HTTP-->  Cloud Run (mrmedcube)
 
 Cube API: `https://mrmedcube-432303484897.asia-south1.run.app/cubejs-api/v1`
 
+`CUBEJS_API_SECRET` must match the Cube service. The client signs a short-lived JWT (not the raw secret) for `/load` — required when Cube runs with `CUBEJS_DEV_MODE=false`.
+
 ## Local dev (Exotel + ngrok)
 
 ```bash

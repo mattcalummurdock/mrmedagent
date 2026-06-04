@@ -1,22 +1,39 @@
 import os
 import re
+import time
+from pathlib import Path
 
+import jwt
 import requests
 from dotenv import load_dotenv
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", "cube", ".env"))
+_root = Path(__file__).resolve().parent.parent
+if (_root / ".env").is_file():
+    load_dotenv(_root / ".env", override=False)
 
 CUBE_BASE = os.getenv("CUBE_BASE", "http://localhost:4000/cubejs-api/v1")
-CUBE_TOKEN = os.getenv("CUBEJS_API_SECRET", "medcube_dev_secret_7f3a9b2e1d4c8a6f5e0b9d2c7a4f1e8")
 
-HEADERS = {
-    "Authorization": CUBE_TOKEN,
-    "Content-Type": "application/json",
-}
+
+def _cube_headers() -> dict[str, str]:
+    """Cube production mode requires a JWT signed with CUBEJS_API_SECRET (not the raw secret)."""
+    secret = os.getenv("CUBEJS_API_SECRET", "").strip()
+    if not secret:
+        raise ValueError("CUBEJS_API_SECRET must be set")
+    now = int(time.time())
+    token = jwt.encode(
+        {"iat": now, "exp": now + 3600},
+        secret,
+        algorithm="HS256",
+    )
+    if isinstance(token, bytes):
+        token = token.decode("utf-8")
+    return {"Authorization": token, "Content-Type": "application/json"}
 
 
 def cube_query(query: dict) -> list[dict]:
-    resp = requests.post(f"{CUBE_BASE}/load", json={"query": query}, headers=HEADERS, timeout=30)
+    resp = requests.post(
+        f"{CUBE_BASE}/load", json={"query": query}, headers=_cube_headers(), timeout=30
+    )
     resp.raise_for_status()
     return resp.json().get("data", [])
 

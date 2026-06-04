@@ -9,6 +9,7 @@ dependencies = [
   "pipecatcloud>=0.2.4",
   "aiortc",
   "requests",
+  "pyjwt>=2.8.0",
   "python-dotenv",
   "loguru",
   "fastapi",
