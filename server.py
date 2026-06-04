@@ -74,7 +74,7 @@ transport_params = {
         audio_out_enabled=True,
         add_wav_header=False,
         vad_analyzer=SileroVADAnalyzer(
-            params=VADParams(start_secs=0.3, stop_secs=0.3),
+            params=VADParams(start_secs=0.2, stop_secs=0.2),
         ),
     ),
 }
