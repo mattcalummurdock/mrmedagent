@@ -1,0 +1,8 @@
+.venv/
+.env
+.env.cloudrun
+*.log
+postprocessor.log
+gen-lang-client-*.json
+__pycache__/
+*.pyc

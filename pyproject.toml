@@ -1,0 +1,21 @@
+[project]
+name = "exotel-chatbot-dial-in"
+version = "0.1.0"
+description = "Exotel dial-in example for Pipecat"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "pipecat-ai[websocket,silero,runner,google,webrtc,elevenlabs]>=0.0.90",
+  "pipecatcloud>=0.2.4",
+  "aiortc",
+  "requests",
+  "python-dotenv",
+  "loguru",
+  "fastapi",
+  "uvicorn",
+  "aiohttp",
+  "pyngrok",
+  "groq",
+  "psycopg2-binary",
+  "pyrnnoise>=0.2.0",
+]
