@@ -1,7 +1,7 @@
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.services.llm_service import FunctionCallParams
 
-from ._cube import attach_bulk_pricing, flatten_cube_rows, run_cube
+from ._cube import attach_bulk_pricing_parallel, flatten_cube_rows, run_cube
 from ._guards import is_non_medicine_lookup
 
 SCHEMA = FunctionSchema(
@@ -47,7 +47,11 @@ async def handler(params: FunctionCallParams):
         return
     rows = await run_cube(cube_tools.get_medicine_detail, name)
     medicines = flatten_cube_rows(rows)
-    for med in medicines:
-        if med.get("pricing_model") in ("quantity_tier", "flat_per_unit"):
-            await attach_bulk_pricing(med, int(med["id"]))
+    bulk_targets = [
+        m
+        for m in medicines
+        if m.get("pricing_model") in ("quantity_tier", "flat_per_unit") and m.get("id")
+    ]
+    if bulk_targets:
+        await attach_bulk_pricing_parallel(bulk_targets)
     await params.result_callback({"medicines": medicines})

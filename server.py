@@ -55,6 +55,18 @@ from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams
 logger.remove(0)
 logger.add(sys.stderr, level="DEBUG")
 
+
+async def _prewarm_cube_background() -> None:
+    try:
+        from tools._cube import prewarm_cube, prewarm_cube_alternatives_path
+
+        await prewarm_cube()
+        await prewarm_cube_alternatives_path("Oxiage LG")
+        logger.info("Cube prewarm finished (medicine + alternatives cached)")
+    except Exception as e:
+        logger.warning(f"Cube prewarm skipped: {e}")
+
+
 DEFAULT_PORT = 7860
 IST = timezone(timedelta(hours=5, minutes=30))
 STUN_SERVER = "stun:stun.l.google.com:19302"
@@ -571,6 +583,16 @@ if __name__ == "__main__":
         logger.warning(f"Vertex credentials unavailable at startup: {exc}")
     logger.info("=== Vertex Live configuration (server startup) ===")
     log_vertex_llm_config(logger, project_id=startup_project_id)
+
+    import threading
+
+    def _cube_prewarm_thread() -> None:
+        try:
+            asyncio.run(_prewarm_cube_background())
+        except Exception as exc:
+            logger.warning(f"Cube prewarm thread failed: {exc}")
+
+    threading.Thread(target=_cube_prewarm_thread, daemon=True, name="cube-prewarm").start()
 
     exotel_mode = _is_exotel_mode()
 

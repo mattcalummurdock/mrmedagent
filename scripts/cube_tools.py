@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import time
@@ -7,35 +8,80 @@ import jwt
 import requests
 from dotenv import load_dotenv
 
-_root = Path(__file__).resolve().parent.parent
-if (_root / ".env").is_file():
-    load_dotenv(_root / ".env", override=False)
+_here = Path(__file__).resolve().parent
+_repo_root = _here.parent
+for _env in (
+    _repo_root / ".env",
+    _repo_root / "cube" / ".env",  # AICaller/DB monorepo layout
+    _repo_root.parent / "agent" / ".env",
+    _repo_root.parent.parent / "agent" / ".env",
+):
+    if _env.is_file():
+        load_dotenv(_env, override=False)
 
 CUBE_BASE = os.getenv("CUBE_BASE", "http://localhost:4000/cubejs-api/v1")
+CUBE_HTTP_TIMEOUT = float(os.getenv("CUBE_HTTP_TIMEOUT", "30"))
+CUBE_CACHE_TTL_SECS = int(os.getenv("CUBE_CACHE_TTL_SECS", "300"))
+
+_http = requests.Session()
+_jwt_token: str | None = None
+_jwt_expires_at: int = 0
+_query_cache: dict[str, tuple[float, list]] = {}
 
 
 def _cube_headers() -> dict[str, str]:
     """Cube production mode requires a JWT signed with CUBEJS_API_SECRET (not the raw secret)."""
+    global _jwt_token, _jwt_expires_at
     secret = os.getenv("CUBEJS_API_SECRET", "").strip()
     if not secret:
         raise ValueError("CUBEJS_API_SECRET must be set")
     now = int(time.time())
-    token = jwt.encode(
-        {"iat": now, "exp": now + 3600},
-        secret,
-        algorithm="HS256",
-    )
+    if _jwt_token and now < _jwt_expires_at - 60:
+        return {"Authorization": _jwt_token, "Content-Type": "application/json"}
+    exp = now + 3600
+    token = jwt.encode({"iat": now, "exp": exp}, secret, algorithm="HS256")
     if isinstance(token, bytes):
         token = token.decode("utf-8")
+    _jwt_token = token
+    _jwt_expires_at = exp
     return {"Authorization": token, "Content-Type": "application/json"}
 
 
 def cube_query(query: dict) -> list[dict]:
-    resp = requests.post(
-        f"{CUBE_BASE}/load", json={"query": query}, headers=_cube_headers(), timeout=30
+    cache_key = json.dumps(query, sort_keys=True, default=str)
+    if CUBE_CACHE_TTL_SECS > 0:
+        cached = _query_cache.get(cache_key)
+        if cached:
+            ts, data = cached
+            if time.time() - ts < CUBE_CACHE_TTL_SECS:
+                return data
+
+    resp = _http.post(
+        f"{CUBE_BASE}/load",
+        json={"query": query},
+        headers=_cube_headers(),
+        timeout=CUBE_HTTP_TIMEOUT,
     )
     resp.raise_for_status()
-    return resp.json().get("data", [])
+    data = resp.json().get("data", [])
+    if CUBE_CACHE_TTL_SECS > 0:
+        _query_cache[cache_key] = (time.time(), data)
+    return data
+
+
+def prewarm() -> None:
+    """Lightweight query to keep Cube/DB connections warm (call on agent startup)."""
+    cube_query({
+        "dimensions": ["Medicines.id"],
+        "filters": [
+            {
+                "member": "Medicines.id",
+                "operator": "equals",
+                "values": ["1"],
+            }
+        ],
+        "limit": 1,
+    })
 
 
 def get_medicine_detail(name: str) -> list[dict]:

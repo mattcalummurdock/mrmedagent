@@ -1,7 +1,12 @@
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.services.llm_service import FunctionCallParams
 
-from ._cube import attach_bulk_pricing, flatten_cube_rows, run_cube
+from ._cube import (
+    attach_bulk_pricing_parallel,
+    flatten_cube_rows,
+    run_cube,
+    should_attach_bulk_on_alternatives,
+)
 
 SCHEMA = FunctionSchema(
     name="get_alternatives",
@@ -35,8 +40,6 @@ async def handler(params: FunctionCallParams):
         cube_tools.get_alternatives, medicine_id, cheaper_only=cheaper_only
     )
     alternatives = flatten_cube_rows(rows)
-    for alt in alternatives:
-        alt_id = alt.get("alternative_id")
-        if alt_id:
-            await attach_bulk_pricing(alt, int(alt_id))
+    if alternatives and should_attach_bulk_on_alternatives():
+        await attach_bulk_pricing_parallel(alternatives)
     await params.result_callback({"alternatives": alternatives})
