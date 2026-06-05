@@ -14,6 +14,7 @@ from pathlib import Path
 import requests
 from loguru import logger
 
+from cube_auth import cube_headers
 from cube_config import CUBE_BASE, CUBE_PORT
 
 _CUBE_DIR = Path(__file__).resolve().parent / "cube"
@@ -55,10 +56,10 @@ def _wait_for_cube(timeout: float | None = None) -> bool:
             logger.error(f"Embedded Cube exited early (code={_CUBE_PROCESS.returncode})")
             return False
         try:
-            resp = requests.get(url, timeout=2)
+            resp = requests.get(url, headers=cube_headers(), timeout=2)
             if resp.status_code == 200:
                 return True
-        except requests.RequestException:
+        except (requests.RequestException, ValueError):
             pass
         time.sleep(0.5)
     return False

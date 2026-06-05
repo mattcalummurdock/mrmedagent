@@ -5,7 +5,6 @@ import sys
 import time
 from pathlib import Path
 
-import jwt
 import requests
 from dotenv import load_dotenv
 
@@ -23,32 +22,13 @@ for _env in (
     if _env.is_file():
         load_dotenv(_env, override=False)
 
+from cube_auth import cube_headers as _cube_headers  # noqa: E402
 from cube_config import CUBE_BASE  # noqa: E402 — always localhost embedded Cube
 CUBE_HTTP_TIMEOUT = float(os.getenv("CUBE_HTTP_TIMEOUT", "30"))
 CUBE_CACHE_TTL_SECS = int(os.getenv("CUBE_CACHE_TTL_SECS", "300"))
 
 _http = requests.Session()
-_jwt_token: str | None = None
-_jwt_expires_at: int = 0
 _query_cache: dict[str, tuple[float, list]] = {}
-
-
-def _cube_headers() -> dict[str, str]:
-    """Cube production mode requires a JWT signed with CUBEJS_API_SECRET (not the raw secret)."""
-    global _jwt_token, _jwt_expires_at
-    secret = os.getenv("CUBEJS_API_SECRET", "").strip()
-    if not secret:
-        raise ValueError("CUBEJS_API_SECRET must be set")
-    now = int(time.time())
-    if _jwt_token and now < _jwt_expires_at - 60:
-        return {"Authorization": _jwt_token, "Content-Type": "application/json"}
-    exp = now + 3600
-    token = jwt.encode({"iat": now, "exp": exp}, secret, algorithm="HS256")
-    if isinstance(token, bytes):
-        token = token.decode("utf-8")
-    _jwt_token = token
-    _jwt_expires_at = exp
-    return {"Authorization": token, "Content-Type": "application/json"}
 
 
 def cube_query(query: dict) -> list[dict]:
