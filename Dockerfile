@@ -23,16 +23,18 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen 2>/dev/null || uv sync
 
-# Cube.js deps (installed before full COPY for layer caching)
+# Cube.js deps (package files only — layer cached when lockfile unchanged)
 COPY cube/package.json cube/package-lock.json ./cube/
-RUN cd cube && npm ci --omit=dev && cp -a schema model
+RUN cd cube && npm ci --omit=dev
 
 # Application + embedded Cube schema
 COPY . .
-RUN chmod +x docker-entrypoint.sh \
+RUN cd cube && cp -a schema model \
+    && chmod +x docker-entrypoint.sh \
     && test -f scripts/cube_tools.py \
     && test -f cube/cube.js \
     && test -f cube_config.py \
+    && test -d cube/model \
     && node --version \
     && test -d cube/node_modules
 
