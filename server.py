@@ -1,7 +1,6 @@
 import atexit
 import asyncio
 import html
-import inspect
 import json
 import os
 import sys
@@ -25,10 +24,9 @@ from tools import TOOLS_SCHEMA, register_tools
 
 load_dotenv(override=True)
 
-from vertex_config import log_vertex_llm_config, vertex_location, vertex_model, vertex_voice
+from vertex_config import log_vertex_llm_config
 from vertex_credentials import load_vertex_credentials
 
-from pipecat.audio.filters.rnnoise_filter import RNNoiseFilter
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
 from pipecat.frames.frames import LLMRunFrame
@@ -37,56 +35,54 @@ from pipecat.pipeline.runner import PipelineRunner
 from pipecat.pipeline.task import PipelineParams, PipelineTask
 from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
-from pipecat.runner.types import (
-    RunnerArguments,
-    SmallWebRTCRunnerArguments,
-    WebSocketRunnerArguments,
-)
-from pipecat.runner.utils import (
-    _create_telephony_transport,
-    _get_transport_params,
-    create_transport,
-    parse_telephony_websocket,
-)
-from pipecat.services.google.gemini_live.vertex.llm import GeminiLiveVertexLLMService
+from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments
+from pipecat.runner.utils import create_transport, parse_telephony_websocket
+from pipecat.serializers.exotel import ExotelFrameSerializer
+from pipecat.services.google.gemini_live.llm_vertex import GeminiLiveVertexLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
-from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams
+from pipecat.transports.websocket.fastapi import (
+    FastAPIWebsocketParams,
+    FastAPIWebsocketTransport,
+)
 
 logger.remove(0)
 logger.add(sys.stderr, level="DEBUG")
 
 
-async def _prewarm_cube_background() -> None:
-    try:
-        from tools._cube import prewarm_cube, prewarm_cube_alternatives_path
-
-        await prewarm_cube()
-        await prewarm_cube_alternatives_path("Oxiage LG")
-        logger.info("Cube prewarm finished (medicine + alternatives cached)")
-    except Exception as e:
-        logger.warning(f"Cube prewarm skipped: {e}")
-
-
 DEFAULT_PORT = 7860
 IST = timezone(timedelta(hours=5, minutes=30))
-STUN_SERVER = "stun:stun.l.google.com:19302"
-LOCAL_HOST = "127.0.0.1"
-
 _ngrok_tunnel = None
 
+# Match qua/agent/qua.py transport params exactly.
 transport_params = {
-    "webrtc": lambda: TransportParams(
-        audio_in_filter=RNNoiseFilter(),
+    "daily": lambda: TransportParams(
         audio_in_enabled=True,
         audio_out_enabled=True,
+        vad_analyzer=SileroVADAnalyzer(
+            params=VADParams(stop_secs=0.3, min_volume=0.6),
+        ),
     ),
-    "exotel": lambda: FastAPIWebsocketParams(
-        audio_in_filter=RNNoiseFilter(),
+    "twilio": lambda: FastAPIWebsocketParams(
         audio_in_enabled=True,
         audio_out_enabled=True,
         add_wav_header=False,
         vad_analyzer=SileroVADAnalyzer(
-            params=VADParams(start_secs=0.2, stop_secs=0.2),
+            params=VADParams(stop_secs=0.3, min_volume=0.6),
+        ),
+    ),
+    "exotel": lambda: FastAPIWebsocketParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+        add_wav_header=False,
+        vad_analyzer=SileroVADAnalyzer(
+            params=VADParams(stop_secs=0.1, min_volume=0.3, start_secs=0.1),
+        ),
+    ),
+    "webrtc": lambda: TransportParams(
+        audio_in_enabled=True,
+        audio_out_enabled=True,
+        vad_analyzer=SileroVADAnalyzer(
+            params=VADParams(stop_secs=0.2, min_volume=0.6, start_secs=0.1),
         ),
     ),
 }
@@ -276,32 +272,17 @@ def _prepare_exotel_proxy():
     print()
 
 
-def _apply_webrtc_runner_patches():
-    """Patch Pipecat runner for reliable local WebRTC on Windows."""
-    import pipecat.runner.run as runner_run
-    from pipecat.transports.smallwebrtc.connection import IceServer
-
-    source = inspect.getsource(runner_run._setup_webrtc_routes)
-    source = source.replace(
-        'if request_data.get("enableDefaultIceServers"):',
-        "if True:  # always expose STUN to the prebuilt WebRTC client",
-    )
-    source = source.replace(
-        "SmallWebRTCRequestHandler(\n        esp32_mode=args.esp32, host=args.host\n    )",
-        "SmallWebRTCRequestHandler(\n"
-        "        ice_servers=_SERVER_ICE_SERVERS,\n"
-        "        esp32_mode=True,\n"
-        "        host=args.host,\n"
-        "    )",
-    )
-
-    namespace = dict(vars(runner_run))
-    namespace["_SERVER_ICE_SERVERS"] = [IceServer(urls=STUN_SERVER)]
-    namespace["IceServer"] = IceServer
-    exec(compile(source, "<webrtc_setup>", "exec"), namespace)
-    runner_run._setup_webrtc_routes = namespace["_setup_webrtc_routes"]
-    logger.info(
-        f"WebRTC runner patched: browser STUN, server SDP munged to {LOCAL_HOST}"
+def _vertex_model_path(project_id: str, location: str) -> str:
+    """Full Vertex publisher path — same shape as qua/agent/qua.py."""
+    model_id = os.getenv(
+        "VERTEX_MODEL", "gemini-live-2.5-flash-preview-native-audio-09-2025"
+    ).strip()
+    if model_id.startswith("projects/"):
+        return model_id
+    model_id = model_id.split("/")[-1]
+    return (
+        f"projects/{project_id}/locations/{location}/"
+        f"publishers/google/models/{model_id}"
     )
 
 
@@ -357,38 +338,15 @@ def build_greeting_developer_message(session: CallSession) -> str:
             name = str(session.outbound_context.get("name") or "there")
         return (
             f'Say exactly: "Hello, am I speaking with {name}?" '
-            "Speak English with a THICK unmistakable Indian accent — stern tone, "
-            "never American/British/neutral foreign accent. "
+            "Talk in an Indian accent but don't be slow — conversational tone. "
             "One sentence only — do not introduce yourself "
             "or mention Mr. Med or any medicine yet. Wait for their answer."
         )
     return (
         'Say exactly: "Hi, this is Sarah from Mr. Med — may I know your name please?" '
-        "Speak English with a THICK unmistakable Indian accent — stern tone, "
-        "never American/British/neutral foreign accent. "
+        "Talk in an Indian accent but don't be slow — conversational tone. "
         "One sentence only — do not ask how you can help or mention any medicine."
     )
-
-
-def _audio_sample_rates(runner_args: RunnerArguments) -> tuple[int, int]:
-    if isinstance(runner_args, WebSocketRunnerArguments):
-        return 16000, 8000
-    return 16000, 24000
-
-
-async def _create_bot_transport(runner_args: RunnerArguments):
-    """Create transport; for telephony, parse Exotel/Twilio handshake once for call metadata."""
-    if isinstance(runner_args, WebSocketRunnerArguments):
-        transport_type, call_data = await parse_telephony_websocket(
-            runner_args.websocket
-        )
-        params = _get_transport_params(transport_type, transport_params)
-        transport = await _create_telephony_transport(
-            runner_args.websocket, params, transport_type, call_data
-        )
-        return transport, call_data
-    transport = await create_transport(runner_args, transport_params)
-    return transport, None
 
 
 def _log_postprocess_task(task: asyncio.Task) -> None:
@@ -421,48 +379,57 @@ async def run_bot(
         f"(phone={session.customer_phone}, sid={session.call_sid})"
     )
 
-    credentials_json, project_id = load_vertex_credentials()
-    location = vertex_location()
-    model = vertex_model()
-    voice = vertex_voice()
-    temperature = float(os.getenv("LLM_TEMPERATURE", "0.2"))
-    audio_in_rate, audio_out_rate = _audio_sample_rates(runner_args)
+    credentials_json, credentials_project_id = load_vertex_credentials()
+    # Same env vars as qua/agent/qua.py
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") or credentials_project_id
+    location = os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
+    model_path = _vertex_model_path(project_id, location)
+    voice_id = (
+        os.getenv("VERTEX_VOICE", "").strip()
+        or os.getenv("GEMINI_VOICE_NAME", "").strip()
+        or "Aoede"
+    )
 
     logger.info(f"Initializing Vertex Live LLM for {mode} call (project={project_id})")
+    logger.info(f"Using model: {model_path}")
     log_vertex_llm_config(logger, project_id=project_id)
 
     llm = GeminiLiveVertexLLMService(
         credentials=credentials_json,
         project_id=project_id,
         location=location,
-        settings=GeminiLiveVertexLLMService.Settings(
-            model=model,
-            voice=voice,
-            temperature=temperature,
-            system_instruction=build_system_instruction(session),
-        ),
+        model=model_path,
+        system_instruction=build_system_instruction(session),
+        voice_id=voice_id,
         tools=TOOLS_SCHEMA,
     )
     register_tools(llm)
 
-    context = LLMContext()
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(context)
+    context = LLMContext(
+        [
+            {
+                "role": "user",
+                "content": build_greeting_developer_message(session),
+            }
+        ]
+    )
+    context_aggregator = LLMContextAggregatorPair(context)
 
     pipeline = Pipeline(
         [
             transport.input(),
-            user_aggregator,
+            context_aggregator.user(),
             llm,
             transport.output(),
-            assistant_aggregator,
+            context_aggregator.assistant(),
         ]
     )
 
     task = PipelineTask(
         pipeline,
         params=PipelineParams(
-            audio_in_sample_rate=audio_in_rate,
-            audio_out_sample_rate=audio_out_rate,
+            audio_in_sample_rate=16000,
+            audio_out_sample_rate=16000,
             enable_metrics=True,
             enable_usage_metrics=True,
         ),
@@ -472,12 +439,6 @@ async def run_bot(
     @transport.event_handler("on_client_connected")
     async def on_client_connected(transport, client):
         logger.info(f"Client connected — {mode} greeting")
-        context.add_message(
-            {
-                "role": "developer",
-                "content": build_greeting_developer_message(session),
-            }
-        )
         await task.queue_frames([LLMRunFrame()])
 
     @transport.event_handler("on_client_disconnected")
@@ -499,25 +460,39 @@ async def run_bot(
 
 
 async def bot(runner_args: RunnerArguments):
-    transport = None
-    call_data = None
-    try:
-        transport, call_data = await _create_bot_transport(runner_args)
+    """Match qua/agent/qua.py transport selection and pipeline entry."""
+    if hasattr(runner_args, "websocket") and runner_args.websocket:
+        transport_type, call_data = await parse_telephony_websocket(
+            runner_args.websocket
+        )
+        logger.info(f"Auto-detected transport: {transport_type}")
 
-        if isinstance(runner_args, SmallWebRTCRunnerArguments):
-            logger.info("Engaging WebRTC peer connection early")
-            await runner_args.webrtc_connection.connect()
+        serializer = ExotelFrameSerializer(
+            stream_sid=call_data.get("stream_id", ""),
+            call_sid=call_data.get("call_id", ""),
+        )
 
-        await run_bot(transport, runner_args, call_data=call_data)
-    except Exception as e:
-        logger.error(f"Call session failed: {e}", exc_info=True)
-        raise
-    finally:
-        if transport is not None:
-            try:
-                await transport.cleanup()
-            except Exception as cleanup_err:
-                logger.warning(f"Transport cleanup error: {cleanup_err}")
+        transport = FastAPIWebsocketTransport(
+            websocket=runner_args.websocket,
+            params=FastAPIWebsocketParams(
+                audio_in_enabled=True,
+                audio_out_enabled=True,
+                add_wav_header=False,
+                vad_analyzer=SileroVADAnalyzer(
+                    params=VADParams(
+                        stop_secs=0.1,
+                        min_volume=0.3,
+                        start_secs=0.1,
+                    )
+                ),
+                serializer=serializer,
+            ),
+        )
+    else:
+        transport = await create_transport(runner_args, transport_params)
+        call_data = None
+
+    await run_bot(transport, runner_args, call_data=call_data)
 
 
 def _register_dialout_route(app) -> None:
@@ -571,10 +546,24 @@ def _register_dialout_route(app) -> None:
         )
 
 
-if __name__ == "__main__":
-    from pipecat.runner.run import app, main
+def _patch_runner_with_dialout_route() -> None:
+    """Pipecat 0.0.92 builds the FastAPI app inside main(); hook dialout there."""
+    import pipecat.runner.run as runner_run
 
-    _register_dialout_route(app)
+    original_create = runner_run._create_server_app
+
+    def create_server_app_with_dialout(**kwargs):
+        app = original_create(**kwargs)
+        _register_dialout_route(app)
+        return app
+
+    runner_run._create_server_app = create_server_app_with_dialout
+
+
+if __name__ == "__main__":
+    from pipecat.runner.run import main
+
+    _patch_runner_with_dialout_route()
 
     try:
         from cube_service import start_embedded_cube
@@ -592,16 +581,6 @@ if __name__ == "__main__":
     logger.info("=== Vertex Live configuration (server startup) ===")
     log_vertex_llm_config(logger, project_id=startup_project_id)
 
-    import threading
-
-    def _cube_prewarm_thread() -> None:
-        try:
-            asyncio.run(_prewarm_cube_background())
-        except Exception as exc:
-            logger.warning(f"Cube prewarm thread failed: {exc}")
-
-    threading.Thread(target=_cube_prewarm_thread, daemon=True, name="cube-prewarm").start()
-
     exotel_mode = _is_exotel_mode()
 
     if exotel_mode:
@@ -609,15 +588,9 @@ if __name__ == "__main__":
             sys.argv.extend(["--host", "0.0.0.0"])
         _prepare_exotel_proxy()
     else:
-        _apply_webrtc_runner_patches()
-        if "--host" not in sys.argv:
-            sys.argv.extend(["--host", LOCAL_HOST])
-        if "--esp32" not in sys.argv:
-            sys.argv.append("--esp32")
-
         print()
-        print("IMPORTANT: Open this exact URL (not localhost):")
-        print(f"   http://{LOCAL_HOST}:7860/client")
+        print("WebRTC client:")
+        print(f"   http://127.0.0.1:{_get_cli_port()}/client")
         print()
 
     main()

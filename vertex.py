@@ -22,7 +22,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
-from pipecat.services.google.gemini_live.vertex.llm import GeminiLiveVertexLLMService
+from pipecat.services.google.gemini_live.llm_vertex import GeminiLiveVertexLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 
 logger.remove(0)
@@ -86,27 +86,34 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
 
     log_vertex_llm_config(logger, project_id=project_id)
 
+    model_path = (
+        VERTEX_MODEL
+        if VERTEX_MODEL.startswith("projects/")
+        else (
+            f"projects/{project_id}/locations/{VERTEX_LOCATION}/"
+            f"publishers/google/models/{VERTEX_MODEL.split('/')[-1]}"
+        )
+    )
+
     llm = GeminiLiveVertexLLMService(
         credentials=credentials_json,
         project_id=project_id,
         location=VERTEX_LOCATION,
-        settings=GeminiLiveVertexLLMService.Settings(
-            model=VERTEX_MODEL,
-            voice=VERTEX_VOICE,
-            system_instruction=SYSTEM_PROMPT,
-        ),
+        model=model_path,
+        system_instruction=SYSTEM_PROMPT,
+        voice_id=VERTEX_VOICE,
     )
 
     context = LLMContext()
-    user_aggregator, assistant_aggregator = LLMContextAggregatorPair(context)
+    context_aggregator = LLMContextAggregatorPair(context)
 
     pipeline = Pipeline(
         [
             transport.input(),
-            user_aggregator,
+            context_aggregator.user(),
             llm,
             transport.output(),
-            assistant_aggregator,
+            context_aggregator.assistant(),
         ]
     )
 
@@ -114,7 +121,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         pipeline,
         params=PipelineParams(
             audio_in_sample_rate=16000,
-            audio_out_sample_rate=24000,
+            audio_out_sample_rate=16000,
             enable_metrics=True,
             enable_usage_metrics=True,
         ),

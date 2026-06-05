@@ -53,21 +53,6 @@ def cube_query(query: dict) -> list[dict]:
     return data
 
 
-def prewarm() -> None:
-    """Lightweight query to keep Cube/DB connections warm (call on agent startup)."""
-    cube_query({
-        "dimensions": ["Medicines.id"],
-        "filters": [
-            {
-                "member": "Medicines.id",
-                "operator": "equals",
-                "values": ["1"],
-            }
-        ],
-        "limit": 1,
-    })
-
-
 def get_medicine_detail(name: str) -> list[dict]:
     return cube_query({
         "dimensions": [

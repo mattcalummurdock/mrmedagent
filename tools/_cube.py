@@ -86,21 +86,3 @@ async def attach_bulk_pricing_parallel(items: list[dict]) -> None:
 def should_attach_bulk_on_alternatives() -> bool:
     return _ATTACH_BULK_ON_ALTERNATIVES
 
-
-async def prewarm_cube() -> None:
-    """Warm HTTP pool + Cube/Postgres on server startup."""
-    import cube_tools
-
-    await run_cube(cube_tools.prewarm)
-
-
-async def prewarm_cube_alternatives_path(medicine_name: str = "Oxiage LG") -> None:
-    """Preload common medicine + alternatives queries into cache."""
-    import cube_tools
-
-    rows = await run_cube(cube_tools.get_medicine_detail, medicine_name)
-    medicines = flatten_cube_rows(rows)
-    if not medicines:
-        return
-    med_id = int(medicines[0]["id"])
-    await run_cube(cube_tools.get_alternatives, med_id, cheaper_only=True)
