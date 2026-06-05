@@ -29,7 +29,7 @@ RUN cd cube && npm ci --omit=dev
 
 # Application + embedded Cube schema
 COPY . .
-RUN cd cube && cp -a schema model \
+RUN cp -a cube/schema cube/model \
     && chmod +x docker-entrypoint.sh \
     && test -f scripts/cube_tools.py \
     && test -f cube/cube.js \
