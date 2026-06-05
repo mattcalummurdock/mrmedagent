@@ -1,5 +1,6 @@
 from pipecat.adapters.schemas.tools_schema import ToolsSchema
 
+from ._announce import augment_schema
 from . import (
     compare_medicines,
     get_alternatives,
@@ -18,7 +19,9 @@ _TOOL_MODULES = [
     get_drug_interactions,
 ]
 
-TOOLS_SCHEMA = ToolsSchema(standard_tools=[m.SCHEMA for m in _TOOL_MODULES])
+TOOLS_SCHEMA = ToolsSchema(
+    standard_tools=[augment_schema(m.SCHEMA) for m in _TOOL_MODULES]
+)
 
 
 def register_tools(llm):

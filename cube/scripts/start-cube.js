@@ -30,18 +30,17 @@ async function main() {
     );
   }
 
-  const child = spawn(
-    process.platform === 'win32' ? 'npx.cmd' : 'npx',
-    ['cubejs-server'],
-    {
-      cwd: CONF_ROOT,
-      stdio: 'inherit',
-      env: {
-        ...process.env,
-        CUBEJS_LOG_LEVEL: process.env.CUBEJS_LOG_LEVEL || 'info',
-      },
-    }
-  );
+  const isWin = process.platform === 'win32';
+  const child = spawn(isWin ? 'npx.cmd' : 'npx', ['cubejs-server'], {
+    cwd: CONF_ROOT,
+    stdio: 'inherit',
+    // Required on Windows — otherwise spawn throws EINVAL
+    shell: isWin,
+    env: {
+      ...process.env,
+      CUBEJS_LOG_LEVEL: process.env.CUBEJS_LOG_LEVEL || 'info',
+    },
+  });
 
   child.on('exit', (code, signal) => {
     if (signal) process.kill(process.pid, signal);

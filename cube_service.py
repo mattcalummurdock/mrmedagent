@@ -109,6 +109,7 @@ def start_embedded_cube() -> None:
         env=env,
         stdout=sys.stdout,
         stderr=sys.stderr,
+        shell=sys.platform == "win32",
     )
     atexit.register(_shutdown_cube)
 
