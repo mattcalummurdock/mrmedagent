@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -10,16 +11,19 @@ from dotenv import load_dotenv
 
 _here = Path(__file__).resolve().parent
 _repo_root = _here.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
+
 for _env in (
     _repo_root / ".env",
-    _repo_root / "cube" / ".env",  # AICaller/DB monorepo layout
+    _repo_root / "cube" / ".env",
     _repo_root.parent / "agent" / ".env",
     _repo_root.parent.parent / "agent" / ".env",
 ):
     if _env.is_file():
         load_dotenv(_env, override=False)
 
-CUBE_BASE = os.getenv("CUBE_BASE", "http://localhost:4000/cubejs-api/v1")
+from cube_config import CUBE_BASE  # noqa: E402 — always localhost embedded Cube
 CUBE_HTTP_TIMEOUT = float(os.getenv("CUBE_HTTP_TIMEOUT", "30"))
 CUBE_CACHE_TTL_SECS = int(os.getenv("CUBE_CACHE_TTL_SECS", "300"))
 

@@ -20,13 +20,18 @@ def _resolve_db_scripts() -> Path | None:
 
 
 _DB_SCRIPTS = _resolve_db_scripts()
-_CUBE_ENV = Path(__file__).resolve().parents[2] / "DB" / "cube" / ".env"
+_AGENT_ROOT = Path(__file__).resolve().parents[1]
+_CUBE_ENV_PATHS = (
+    _AGENT_ROOT / "cube" / ".env",
+    Path(__file__).resolve().parents[2] / "DB" / "cube" / ".env",
+)
 
 if _DB_SCRIPTS and str(_DB_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_DB_SCRIPTS))
 
-if _CUBE_ENV.is_file():
-    load_dotenv(_CUBE_ENV, override=False)
+for _cube_env in _CUBE_ENV_PATHS:
+    if _cube_env.is_file():
+        load_dotenv(_cube_env, override=False)
 
 # Skip extra Cube round-trips on alternatives (saves ~200ms+ per alt). Bulk upsell on detail only.
 _ATTACH_BULK_ON_ALTERNATIVES = os.getenv(

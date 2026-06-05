@@ -10,3 +10,5 @@ __pycache__
 postprocessor.log
 gen-lang-client-*.json
 README.deploy.md
+cube/node_modules
+cube/model

@@ -577,6 +577,14 @@ if __name__ == "__main__":
     _register_dialout_route(app)
 
     try:
+        from cube_service import start_embedded_cube
+
+        start_embedded_cube()
+    except Exception as exc:
+        logger.error(f"Embedded Cube startup failed: {exc}")
+        raise
+
+    try:
         _, startup_project_id = load_vertex_credentials()
     except ValueError as exc:
         startup_project_id = None

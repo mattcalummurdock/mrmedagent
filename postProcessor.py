@@ -33,13 +33,17 @@ def _resolve_db_scripts() -> Path | None:
 
 
 _DB_SCRIPTS = _resolve_db_scripts()
-_CUBE_ENV = _AGENT_DIR.parent / "DB" / "cube" / ".env"
+_CUBE_ENV_PATHS = (
+    _AGENT_DIR / "cube" / ".env",
+    _AGENT_DIR.parent / "DB" / "cube" / ".env",
+)
 
 if _DB_SCRIPTS and str(_DB_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_DB_SCRIPTS))
 
-if _CUBE_ENV.is_file():
-    load_dotenv(_CUBE_ENV, override=False)
+for _cube_env in _CUBE_ENV_PATHS:
+    if _cube_env.is_file():
+        load_dotenv(_cube_env, override=False)
 
 # Dedicated post-processor log (agent stderr still shows INFO+ via server)
 logger.add(

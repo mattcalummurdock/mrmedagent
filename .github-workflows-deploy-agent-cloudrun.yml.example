@@ -52,8 +52,15 @@ jobs:
           GEMINI_MODEL=${{ secrets.GEMINI_MODEL }},\
           GEMINI_VOICE_NAME=${{ secrets.GEMINI_VOICE_NAME }},\
           LLM_TEMPERATURE=0.1,\
-          CUBE_BASE=${{ secrets.CUBE_BASE }},\
           CUBEJS_API_SECRET=${{ secrets.CUBEJS_API_SECRET }},\
+          CUBEJS_DEV_MODE=false,\
+          CUBEJS_DB_HOST=${{ secrets.CUBEJS_DB_HOST }},\
+          CUBEJS_DB_PORT=${{ secrets.CUBEJS_DB_PORT }},\
+          CUBEJS_DB_NAME=${{ secrets.CUBEJS_DB_NAME }},\
+          CUBEJS_DB_USER=${{ secrets.CUBEJS_DB_USER }},\
+          CUBEJS_DB_PASS=${{ secrets.CUBEJS_DB_PASS }},\
+          CUBEJS_DB_SSL=true,\
+          CUBEJS_DB_SSL_REJECT_UNAUTHORIZED=false,\
           DATABASE_URL=${{ secrets.DATABASE_URL }},\
           GROQ_API_KEY=${{ secrets.GROQ_API_KEY }},\
           GROQ_MODEL=${{ secrets.GROQ_MODEL }},\

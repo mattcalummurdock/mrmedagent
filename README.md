@@ -1,24 +1,23 @@
 # mrmedagent
 
-Sarah — MrMed voice agent (Gemini Live + Exotel + medicine tools via Cube.js).
+Sarah — MrMed voice agent (Gemini Live + Exotel + embedded Cube.js medicine tools).
 
-## Production architecture
+## Architecture
 
 ```
-Exotel  --wss-->  Cloud Run (this repo)  --HTTP-->  Cloud Run (mrmedcube)
-                        |
-                        +--> Railway Postgres
+Exotel  --wss-->  Agent (Python + Cube.js on localhost:4000)  -->  Postgres
 ```
 
-Cube API: `https://mrmedcube-432303484897.asia-south1.run.app/cubejs-api/v1`
+Cube **always** runs locally inside the agent process tree (`cube_service.py` → `cube/` on port 4000). Tool calls hit `http://127.0.0.1:4000/cubejs-api/v1/load` — there is no external Cube service.
 
-`CUBEJS_API_SECRET` must match the Cube service. The client signs a short-lived JWT (not the raw secret) for `/load` — required when Cube runs with `CUBEJS_DEV_MODE=false`.
+`CUBEJS_API_SECRET` must match the embedded Cube server. The client signs a short-lived JWT for `/load` when `CUBEJS_DEV_MODE=false`.
 
 ## Local dev (Exotel + ngrok)
 
 ```bash
 cp .env.example .env
-# fill keys; CUBE_BASE can point at local or cloud Cube
+# fill Vertex, Exotel, CUBEJS_DB_*, CUBEJS_API_SECRET
+cd cube && npm ci && cd ..
 uv sync
 uv run server.py -t exotel
 ```
@@ -30,36 +29,36 @@ uv run server.py
 # http://127.0.0.1:7860/client
 ```
 
-## Docker
+## Docker / Cloud Run
 
 ```bash
 docker build -t mrmed-agent .
 docker run -p 8080:8080 --env-file .env -e PORT=8080 mrmed-agent
 ```
 
-## Cloud Run
+Single container: Node 20 + Cube schema + Python agent. No separate mrmedcube deploy.
 
-- **Port:** `8080`
-- **Timeout:** `3600`s
-- **Memory:** `2 GiB`+
-- **Entry:** Exotel mode (`docker-entrypoint.sh`)
-- **Env:** see `.env.example` — set `AGENT_PUBLIC_URL` to the service URL (for `wss://.../ws` in Exotel)
+| Setting | Value |
+|---------|--------|
+| Agent port | `8080` (Cloud Run `PORT`) |
+| Cube port | `4000` (localhost only, inside container) |
+| Memory | `2 GiB`+ |
+| Timeout | `3600`s |
 
-Exotel Voicebot WebSocket URL:
-
-```text
-wss://<AGENT_PUBLIC_URL host>/ws
-```
+Env: see `.env.cloudrun.example`. Set `AGENT_PUBLIC_URL` for Exotel `wss://<host>/ws`.
 
 ## GitHub Actions
 
-Workflow: `.github/workflows/deploy-cloudrun.yml` (fill repository secrets).
+Workflow: `.github/workflows/google-cloudrun-docker.yml`
 
 ## Layout
 
 | Path | Role |
 |------|------|
 | `server.py` | Pipecat + FastAPI runner |
+| `cube_config.py` | Hardcoded localhost Cube URL |
+| `cube_service.py` | Starts embedded Cube.js subprocess |
+| `cube/` | Cube.js server (schema, `cube.js`, npm deps) |
 | `tools/` | Gemini function tools (medicine lookup) |
-| `scripts/cube_tools.py` | Cube.js HTTP client |
+| `scripts/cube_tools.py` | Cube.js HTTP client (localhost only) |
 | `postProcessor.py` | Post-call Groq + Postgres CRM |

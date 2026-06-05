@@ -44,6 +44,7 @@ jobs:
           service: '${{ env.SERVICE }}'
           region: '${{ env.REGION }}'
           image: '${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPO_NAME }}/mrmedagent:${{ github.sha }}'
+          flags: '--memory=2Gi --cpu=1 --timeout=3600 --port=8080'
           
       - name: 'Show output'
         run: echo "${{ steps.deploy.outputs.url }}"
