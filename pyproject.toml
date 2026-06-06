@@ -18,4 +18,6 @@ dependencies = [
   "pyngrok",
   "groq",
   "psycopg2-binary",
+  "pgvector",
+  "sentence-transformers",
 ]

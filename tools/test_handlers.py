@@ -28,12 +28,20 @@ async def main():
 
     detail = await _run("get_medicine_detail", detail_handler, {"name": "Oxiage"})
     assert detail and detail["medicines"], "Expected medicine detail rows"
-    med_id = int(detail["medicines"][0]["id"])
-    price = float(detail["medicines"][0]["selling_price"])
-    stock_qty = int(detail["medicines"][0]["stock_quantity"])
+    assert detail.get("best_match"), "Expected best_match in detail response"
+    med_id = int(detail["best_match"]["id"])
+    price = float(detail["best_match"]["selling_price"])
+    stock_qty = int(detail["best_match"]["stock_quantity"])
     assert price == 3219.0, f"Expected price 3219, got {price}"
     assert stock_qty == 48, f"Expected stock_quantity 48, got {stock_qty}"
     print(f"get_medicine_detail: OK (id={med_id}, price={price}, stock={stock_qty})")
+
+    spoken = await _run(
+        "get_medicine_detail", detail_handler, {"name": "oxiage lg in stick"}
+    )
+    assert spoken and spoken["medicines"], "Expected fuzzy match for spoken oxiage lg in stick"
+    assert spoken["resolved_name"] == "Oxiage LG Tablet"
+    print(f"get_medicine_detail fuzzy: OK ({spoken['resolved_name']})")
 
     glutone = await _run("get_medicine_detail", detail_handler, {"name": "Glutone"})
     assert glutone["medicines"][0].get("quantity_pricing"), "Expected quantity_pricing on Glutone"

@@ -1,8 +1,11 @@
+import asyncio
+
 from pipecat.adapters.schemas.function_schema import FunctionSchema
 from pipecat.services.llm_service import FunctionCallParams
 
-from ._cube import attach_bulk_pricing_parallel, flatten_cube_rows, run_cube
+from ._cube import attach_bulk_pricing_parallel
 from ._guards import is_non_medicine_lookup
+from ._medicine_search import search_medicines_by_mention, search_terms_from_mention
 
 SCHEMA = FunctionSchema(
     name="get_medicine_detail",
@@ -12,16 +15,23 @@ SCHEMA = FunctionSchema(
         "DO NOT CALL if the user said Mr. Med, MrMed, Mister Med, Mr. V, Sarah, their "
         "own name, their city, or asked what Mr. Med is — that is the pharmacy company, "
         "not a medicine; answer without tools. "
-        "ONLY CALL when the user explicitly asked for price/stock/info on a named "
-        "medicine product the user named (brand or generic). "
-        "Returns stock_quantity (exact units) and bulk_offer_line when applicable."
+        "CALL when the user asked for price/stock/info on a medicine — pass their exact "
+        "words even if misspelled, mispronounced, or garbled; do NOT ask them to say the "
+        "name properly first. "
+        "Returns stock_quantity (exact units), is_available, stock_status, form, "
+        "pack_size, and bulk_offer_line when applicable. Fuzzy-matches spoken or "
+        "misspelled names via text + embedding + pack-letter search (e.g. garbled "
+        "'oksiage el gee' or pack letters 'atr' may resolve to a catalog product). "
+        "Check match_method: confirm with caller when match_method is 'semantic' or "
+        "'pack_letters'."
     ),
     properties={
         "name": {
             "type": "string",
             "description": (
-                "Exact medicine brand or generic the user asked to look up — e.g. "
-                "Exact name the user asked about. Never 'Mr. Med', 'MrMed', or company names."
+                "Medicine clue exactly as the user said it — full name, garbled name, or "
+                "partial pack letters (e.g. 'I only see atr on the pack'). Never 'Mr. Med', "
+                "'MrMed', or company names."
             ),
         },
     },
@@ -30,8 +40,6 @@ SCHEMA = FunctionSchema(
 
 
 async def handler(params: FunctionCallParams):
-    import cube_tools
-
     name = params.arguments["name"]
     if is_non_medicine_lookup(name):
         await params.result_callback(
@@ -45,8 +53,22 @@ async def handler(params: FunctionCallParams):
             }
         )
         return
-    rows = await run_cube(cube_tools.get_medicine_detail, name)
-    medicines = flatten_cube_rows(rows)
+
+    medicines = await asyncio.to_thread(search_medicines_by_mention, name)
+    if not medicines:
+        await params.result_callback(
+            {
+                "medicines": [],
+                "query": name,
+                "search_terms_tried": search_terms_from_mention(name),
+                "hint": (
+                    "No catalog match. Tell the caller you could not find that exact product "
+                    "in Mr. Med's catalog — do not invent stock or price."
+                ),
+            }
+        )
+        return
+
     bulk_targets = [
         m
         for m in medicines
@@ -54,4 +76,26 @@ async def handler(params: FunctionCallParams):
     ]
     if bulk_targets:
         await attach_bulk_pricing_parallel(bulk_targets)
-    await params.result_callback({"medicines": medicines})
+
+    best = medicines[0]
+    payload: dict = {
+        "medicines": medicines,
+        "best_match": best,
+        "query": name,
+        "resolved_name": best.get("name"),
+        "resolved_id": best.get("id"),
+        "match_method": best.get("match_method", "text"),
+    }
+    if best.get("match_method") in ("semantic", "pack_letters"):
+        if best.get("match_method") == "pack_letters":
+            clue = best.get("matched_clue") or name
+            payload["confirm_with_caller"] = (
+                f"The caller only gave partial pack letters ({clue!r}). "
+                f"Ask: 'Are you looking for {best.get('name')}?' before quoting price or stock."
+            )
+        else:
+            payload["confirm_with_caller"] = (
+                f"The caller's wording did not exactly match the catalog. "
+                f"Ask if they meant {best.get('name')!r} before quoting price or stock."
+            )
+    await params.result_callback(payload)

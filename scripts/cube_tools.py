@@ -53,34 +53,64 @@ def cube_query(query: dict) -> list[dict]:
     return data
 
 
+_MEDICINE_DETAIL_DIMENSIONS = [
+    "Medicines.id",
+    "Medicines.name",
+    "Medicines.brandName",
+    "Medicines.genericName",
+    "Medicines.form",
+    "Medicines.packSize",
+    "Medicines.dosageStrength",
+    "Medicines.mrp",
+    "Medicines.sellingPrice",
+    "Medicines.discountPercent",
+    "Medicines.pricePerUnit",
+    "Medicines.pricingModel",
+    "Medicines.stockQuantity",
+    "Medicines.stockStatus",
+    "Medicines.isAvailable",
+    "Medicines.prescriptionRequired",
+    "Medicines.therapeuticClass",
+    "Medicines.introduction",
+    "Medicines.howToConsume",
+    "Medicines.googleRating",
+]
+
+
 def get_medicine_detail(name: str) -> list[dict]:
     return cube_query({
-        "dimensions": [
-            "Medicines.id",
-            "Medicines.name",
-            "Medicines.genericName",
-            "Medicines.form",
-            "Medicines.dosageStrength",
-            "Medicines.mrp",
-            "Medicines.sellingPrice",
-            "Medicines.discountPercent",
-            "Medicines.pricePerUnit",
-            "Medicines.pricingModel",
-            "Medicines.stockQuantity",
-            "Medicines.stockStatus",
-            "Medicines.isAvailable",
-            "Medicines.prescriptionRequired",
-            "Medicines.therapeuticClass",
-            "Medicines.introduction",
-            "Medicines.howToConsume",
-            "Medicines.googleRating",
-        ],
+        "dimensions": _MEDICINE_DETAIL_DIMENSIONS,
         "filters": [
             {
                 "member": "Medicines.name",
                 "operator": "contains",
                 "values": [name],
             }
+        ],
+    })
+
+
+def get_medicine_by_id(medicine_id: int) -> list[dict]:
+    return cube_query({
+        "dimensions": _MEDICINE_DETAIL_DIMENSIONS,
+        "filters": [
+            {
+                "member": "Medicines.id",
+                "operator": "equals",
+                "values": [str(medicine_id)],
+            }
+        ],
+    })
+
+
+def list_medicines_for_clue_search() -> list[dict]:
+    """All catalog rows for pack-letter / partial-name matching."""
+    return cube_query({
+        "dimensions": [
+            "Medicines.id",
+            "Medicines.name",
+            "Medicines.brandName",
+            "Medicines.genericName",
         ],
     })
 

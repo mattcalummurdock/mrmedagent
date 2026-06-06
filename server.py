@@ -573,6 +573,25 @@ if __name__ == "__main__":
         logger.error(f"Embedded Cube startup failed: {exc}")
         raise
 
+    import threading
+
+    def _semantic_prewarm_thread() -> None:
+        try:
+            from tools._medicine_search import prewarm_semantic_search
+
+            if prewarm_semantic_search():
+                logger.info("Embedding model prewarm finished (semantic medicine lookup)")
+            else:
+                logger.info("Embedding model prewarm skipped (semantic search disabled or unavailable)")
+        except Exception as exc:
+            logger.warning(f"Embedding model prewarm failed: {exc}")
+
+    threading.Thread(
+        target=_semantic_prewarm_thread,
+        daemon=True,
+        name="semantic-prewarm",
+    ).start()
+
     try:
         _, startup_project_id = load_vertex_credentials()
     except ValueError as exc:

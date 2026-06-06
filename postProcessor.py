@@ -312,60 +312,16 @@ def _price_from_cube_row(row: dict) -> float | None:
     return None
 
 
-def _normalize_match_text(value: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", value.lower())
-
-
 def _search_terms_from_mention(mention: str) -> list[str]:
-    """Build progressively broader Cube search terms from a spoken mention."""
-    cleaned = mention.strip()
-    terms: list[str] = []
-    seen: set[str] = set()
+    from tools._medicine_search import search_terms_from_mention
 
-    def add(term: str) -> None:
-        key = term.strip().lower()
-        if key and key not in seen:
-            seen.add(key)
-            terms.append(term.strip())
-
-    add(cleaned)
-    words = re.findall(r"[a-zA-Z0-9]+", cleaned)
-    if len(words) >= 2:
-        add(" ".join(words[:2]))
-        add(" ".join(words[:3]))
-    if words:
-        add(words[0])
-    return terms
+    return search_terms_from_mention(mention)
 
 
 def _score_medicine_match(mention: str, row: dict) -> float:
-    mention_norm = _normalize_match_text(mention)
-    if not mention_norm:
-        return 0.0
+    from tools._medicine_search import score_medicine_match
 
-    name = str(row.get("Medicines.name") or "")
-    generic = str(row.get("Medicines.genericName") or "")
-    name_norm = _normalize_match_text(name)
-    generic_norm = _normalize_match_text(generic)
-
-    best = 0.0
-    for candidate in (name_norm, generic_norm):
-        if not candidate:
-            continue
-        if mention_norm == candidate:
-            best = max(best, 100.0)
-        elif mention_norm in candidate:
-            best = max(best, 85.0 + min(len(mention_norm) / max(len(candidate), 1), 1.0) * 10)
-        elif candidate in mention_norm:
-            best = max(best, 75.0 + min(len(candidate) / max(len(mention_norm), 1), 1.0) * 10)
-        else:
-            mention_tokens = set(re.findall(r"[a-z0-9]+", mention_norm))
-            candidate_tokens = set(re.findall(r"[a-z0-9]+", candidate))
-            if mention_tokens and candidate_tokens:
-                overlap = len(mention_tokens & candidate_tokens) / len(mention_tokens)
-                if overlap >= 0.5:
-                    best = max(best, 40.0 + overlap * 40.0)
-    return best
+    return score_medicine_match(mention, row)
 
 
 def _medicine_row_to_record(row: dict, match_score: float) -> dict[str, Any]:
