@@ -30,7 +30,6 @@ RUN cd cube && npm ci --omit=dev
 # Application + embedded Cube schema
 COPY . .
 RUN cp -a cube/schema cube/model \
-    && chmod +x docker-entrypoint.sh \
     && test -f scripts/cube_tools.py \
     && test -f cube/cube.js \
     && test -f cube_config.py \
@@ -47,4 +46,4 @@ ENV CUBEJS_DEV_MODE=false
 ENV CUBEJS_LOG_LEVEL=info
 EXPOSE 8080
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["sh", "-c", "exec uv run server.py --host 0.0.0.0 --port ${PORT:-8080}"]
