@@ -616,7 +616,7 @@ def _patch_runner_with_daily_routes() -> None:
         async def health_check():
             return JSONResponse({"status": "ok", "transport": "daily"})
 
-        @app.post("/start")
+        @app.post("/daily/start")
         async def start_daily_voice_session(request: Request):
             """Create a Daily room, start the agent, and return connection details."""
             try:
@@ -682,7 +682,7 @@ if __name__ == "__main__":
     port = _get_cli_port()
     print()
     print("Mr. Med Daily voice agent (API only):")
-    print(f"   POST http://127.0.0.1:{port}/start")
+    print(f"   POST http://127.0.0.1:{port}/daily/start")
     print(f"   GET  http://127.0.0.1:{port}/health")
     print()
     print("Voice UI: serve the frontend/ folder (see frontend/README.md)")
