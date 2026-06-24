@@ -16,8 +16,7 @@ fi
 PORT="${PORT:-7860}"
 
 echo "Mr. Med Daily agent"
-echo "  API: POST http://127.0.0.1:${PORT}/daily/start"
-echo "  UI:  serve frontend/ (see frontend/README.md)"
+echo "  Local API: POST http://127.0.0.1:${PORT}/daily/start"
 echo ""
 
 .wsl-venv/bin/uv run server.py --host 0.0.0.0 --port "${PORT}"

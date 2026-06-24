@@ -238,6 +238,49 @@ def cleanup_ngrok():
         _ngrok_tunnel = None
 
 
+def _set_agent_public_url(public_url: str) -> str:
+    """Set AGENT_PUBLIC_URL / AGENT_SERVER_URL for this agent process."""
+    url = public_url.rstrip("/")
+    os.environ["AGENT_PUBLIC_URL"] = url
+    os.environ["AGENT_SERVER_URL"] = url
+    logger.info(f"Agent public URL: {url}")
+    return url
+
+
+def _is_cloud_run() -> bool:
+    return bool(os.getenv("K_SERVICE"))
+
+
+def _use_ngrok_locally() -> bool:
+    if _is_cloud_run():
+        return False
+    flag = os.getenv("USE_NGROK", "").strip().lower()
+    if flag in ("0", "false", "no"):
+        return False
+    if flag in ("1", "true", "yes"):
+        return True
+    return not os.getenv("AGENT_PUBLIC_URL", "").strip()
+
+
+def _prepare_daily_public_url(port: int) -> str:
+    """Expose the agent API publicly (ngrok locally, AGENT_PUBLIC_URL on Cloud Run)."""
+    if _is_cloud_run():
+        url = os.getenv("AGENT_PUBLIC_URL", "").strip().rstrip("/")
+        if url:
+            return _set_agent_public_url(url)
+        return f"http://127.0.0.1:{port}"
+
+    if not _use_ngrok_locally():
+        url = (
+            os.getenv("AGENT_PUBLIC_URL", "").strip()
+            or f"http://127.0.0.1:{port}"
+        ).rstrip("/")
+        return _set_agent_public_url(url)
+
+    hostname = start_ngrok_tunnel(port)
+    return _set_agent_public_url(f"https://{hostname}")
+
+
 def _prepare_exotel_proxy():
     """Inject -x proxy hostname for Pipecat runner (ngrok locally, public URL on Cloud Run)."""
     if _argv_has_flag("-x") or _argv_has_flag("--proxy"):
@@ -695,13 +738,15 @@ if __name__ == "__main__":
         sys.argv.extend(["--host", "0.0.0.0"])
 
     port = _get_cli_port()
+    public_url = _prepare_daily_public_url(port)
     print()
-    print("Mr. Med Daily voice agent (API only):")
-    print(f"   POST http://127.0.0.1:{port}/daily/start")
-    print(f"   GET  http://127.0.0.1:{port}/health")
+    print("Mr. Med Daily voice agent:")
+    print(f"   Public API: POST {public_url}/daily/start")
+    print(f"   Local API:  POST http://127.0.0.1:{port}/daily/start")
+    print(f"   Health:     GET  {public_url}/health")
     print()
-    print("Voice UI: serve the frontend/ folder (see frontend/README.md)")
-    print("  Set AGENT_SERVER_URL to this server's public URL when deploying UI")
+    print("AGENT_PUBLIC_URL is set in this process (use the same value for the")
+    print("separately hosted frontend's AGENT_SERVER_URL env var).")
     print()
 
     main()
