@@ -6,19 +6,22 @@ import time
 import aiohttp
 from loguru import logger
 
-DAILY_API_KEY = os.getenv("DAILY_API_KEY", "").strip()
+
+def _daily_api_key() -> str:
+    return os.getenv("DAILY_API_KEY", "").strip()
 
 
 async def create_daily_room() -> tuple[str, str]:
     """Create a Daily room and owner token for the voice bot."""
-    if not DAILY_API_KEY:
+    api_key = _daily_api_key()
+    if not api_key:
         raise ValueError("DAILY_API_KEY is not set")
 
     async with aiohttp.ClientSession() as session:
         async with session.post(
             "https://api.daily.co/v1/rooms",
             headers={
-                "Authorization": f"Bearer {DAILY_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={
@@ -43,7 +46,7 @@ async def create_daily_room() -> tuple[str, str]:
         async with session.post(
             "https://api.daily.co/v1/meeting-tokens",
             headers={
-                "Authorization": f"Bearer {DAILY_API_KEY}",
+                "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             },
             json={

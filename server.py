@@ -662,6 +662,12 @@ def _patch_runner_with_daily_routes() -> None:
     def create_server_app_with_daily(**kwargs):
         app = original_create(**kwargs)
 
+        @app.middleware("http")
+        async def log_requests(request: Request, call_next):
+            logger.info(f"{request.method} {request.url.path}")
+            response = await call_next(request)
+            return response
+
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
