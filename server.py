@@ -427,23 +427,7 @@ async def run_bot(
         f"(phone={session.customer_phone}, sid={session.call_sid})"
     )
 
-    # On Cloud Run, prefer Workload Identity (no key) over service account JSON.
-    # If VERTEX_CREDENTIALS / GOOGLE_VERTEX_CREDENTIALS is set, use it (local dev /
-    # environments without Workload Identity). Otherwise fall back to ADC so Cloud Run
-    # fetches a token from the metadata server and never touches oauth2.googleapis.com.
-    _raw_creds = (
-        os.getenv("VERTEX_CREDENTIALS") or os.getenv("GOOGLE_VERTEX_CREDENTIALS") or ""
-    ).strip()
-    if _raw_creds:
-        try:
-            credentials_json, credentials_project_id = load_vertex_credentials()
-        except Exception as exc:
-            logger.warning(f"Could not load VERTEX_CREDENTIALS: {exc} — falling back to ADC")
-            credentials_json, credentials_project_id = None, None
-    else:
-        credentials_json, credentials_project_id = None, None
-        logger.info("No VERTEX_CREDENTIALS set — using Application Default Credentials (Workload Identity)")
-
+    credentials_json, credentials_project_id = load_vertex_credentials()
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT_ID") or credentials_project_id
     location = os.getenv("GOOGLE_CLOUD_LOCATION") or "us-central1"
     model_path = _vertex_model_path(project_id, location)
