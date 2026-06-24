@@ -18,6 +18,7 @@ from outbound_system_prompt import (
     SYSTEM_PROMPT as OUTBOUND_SYSTEM_PROMPT,
     build_outbound_context,
 )
+from daily_utils import create_daily_room
 from exotel_service import ExotelService
 from postProcessor import normalize_phone_number, process_call_end, shutdown_postprocessor
 from tools import TOOLS_SCHEMA, register_tools
@@ -40,6 +41,10 @@ from pipecat.runner.utils import create_transport, parse_telephony_websocket
 from pipecat.serializers.exotel import ExotelFrameSerializer
 from pipecat.services.google.gemini_live.llm_vertex import GeminiLiveVertexLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
+try:
+    from pipecat.transports.daily.transport import DailyParams, DailyTransport
+except ImportError:
+    from pipecat.transports.services.daily import DailyParams, DailyTransport
 from pipecat.transports.websocket.fastapi import (
     FastAPIWebsocketParams,
     FastAPIWebsocketTransport,
@@ -55,7 +60,7 @@ _ngrok_tunnel = None
 
 # Match qua/agent/qua.py transport params exactly.
 transport_params = {
-    "daily": lambda: TransportParams(
+    "daily": lambda: DailyParams(
         audio_in_enabled=True,
         audio_out_enabled=True,
         vad_analyzer=SileroVADAnalyzer(
@@ -436,14 +441,8 @@ async def run_bot(
         idle_timeout_secs=runner_args.pipeline_idle_timeout_secs,
     )
 
-    @transport.event_handler("on_client_connected")
-    async def on_client_connected(transport, client):
-        logger.info(f"Client connected — {mode} greeting")
-        await task.queue_frames([LLMRunFrame()])
-
-    @transport.event_handler("on_client_disconnected")
-    async def on_client_disconnected(transport, client):
-        logger.info(f"Client disconnected ({mode}) — scheduling post-processing")
+    async def _on_session_end(label: str) -> None:
+        logger.info(f"{label} ({mode}) — scheduling post-processing")
         messages = context.get_messages()
         pp_task = asyncio.create_task(
             process_call_end(
@@ -455,8 +454,57 @@ async def run_bot(
         pp_task.add_done_callback(_log_postprocess_task)
         await task.cancel()
 
+    if isinstance(transport, DailyTransport):
+        @transport.event_handler("on_first_participant_joined")
+        async def on_first_participant_joined(transport, participant):
+            logger.info(f"First participant joined — {mode} greeting")
+            await transport.capture_participant_transcription(participant["id"])
+            await asyncio.sleep(0.5)
+            await task.queue_frames([LLMRunFrame()])
+
+        @transport.event_handler("on_participant_left")
+        async def on_participant_left(transport, participant, reason):
+            await _on_session_end(f"Participant left (reason={reason})")
+    else:
+        @transport.event_handler("on_client_connected")
+        async def on_client_connected(transport, client):
+            logger.info(f"Client connected — {mode} greeting")
+            await task.queue_frames([LLMRunFrame()])
+
+        @transport.event_handler("on_client_disconnected")
+        async def on_client_disconnected(transport, client):
+            await _on_session_end("Client disconnected")
+
     runner = PipelineRunner(handle_sigint=runner_args.handle_sigint)
     await runner.run(task)
+
+
+async def run_daily_session(room_url: str, token: str) -> None:
+    """Join a Daily room as the voice bot and run the existing agent pipeline."""
+    transport = DailyTransport(
+        room_url,
+        token,
+        "Voice Bot",
+        DailyParams(
+            audio_in_enabled=True,
+            audio_out_enabled=True,
+            vad_analyzer=SileroVADAnalyzer(
+                params=VADParams(stop_secs=0.3, min_volume=0.6),
+            ),
+        ),
+    )
+    runner_args = type(
+        "DailyRunnerArgs",
+        (),
+        {"pipeline_idle_timeout_secs": 300, "handle_sigint": False},
+    )()
+    try:
+        await run_bot(transport, runner_args, call_data=None)
+    finally:
+        try:
+            await transport.cleanup()
+        except Exception as e:
+            logger.debug(f"Daily transport cleanup: {e}")
 
 
 async def bot(runner_args: RunnerArguments):
@@ -546,24 +594,52 @@ def _register_dialout_route(app) -> None:
         )
 
 
-def _patch_runner_with_dialout_route() -> None:
-    """Pipecat 0.0.92 builds the FastAPI app inside main(); hook dialout there."""
+def _patch_runner_with_daily_routes() -> None:
+    """Pipecat 0.0.92 builds the FastAPI app inside main(); hook Daily session routes."""
+    from fastapi.middleware.cors import CORSMiddleware
     import pipecat.runner.run as runner_run
 
     original_create = runner_run._create_server_app
 
-    def create_server_app_with_dialout(**kwargs):
+    def create_server_app_with_daily(**kwargs):
         app = original_create(**kwargs)
-        _register_dialout_route(app)
+
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+        @app.get("/health")
+        async def health_check():
+            return JSONResponse({"status": "ok", "transport": "daily"})
+
+        @app.post("/start")
+        async def start_daily_voice_session(request: Request):
+            """Create a Daily room, start the agent, and return connection details."""
+            try:
+                logger.info("Creating Daily room for Mr. Med voice session...")
+                room_url, token = await create_daily_room()
+                asyncio.create_task(run_daily_session(room_url, token))
+                return JSONResponse({"room_url": room_url, "token": token})
+            except Exception as e:
+                logger.error(f"Failed to start Daily session: {e}")
+                return JSONResponse(
+                    status_code=500,
+                    content={"error": str(e)},
+                )
+
         return app
 
-    runner_run._create_server_app = create_server_app_with_dialout
+    runner_run._create_server_app = create_server_app_with_daily
 
 
 if __name__ == "__main__":
     from pipecat.runner.run import main
 
-    _patch_runner_with_dialout_route()
+    _patch_runner_with_daily_routes()
 
     try:
         from cube_service import start_embedded_cube
@@ -600,17 +676,18 @@ if __name__ == "__main__":
     logger.info("=== Vertex Live configuration (server startup) ===")
     log_vertex_llm_config(logger, project_id=startup_project_id)
 
-    exotel_mode = _is_exotel_mode()
+    if "--host" not in sys.argv:
+        sys.argv.extend(["--host", "0.0.0.0"])
 
-    if exotel_mode:
-        if "--host" not in sys.argv:
-            sys.argv.extend(["--host", "0.0.0.0"])
-        _prepare_exotel_proxy()
-    else:
-        print()
-        print("WebRTC client:")
-        print(f"   http://127.0.0.1:{_get_cli_port()}/client")
-        print()
+    port = _get_cli_port()
+    print()
+    print("Mr. Med Daily voice agent (API only):")
+    print(f"   POST http://127.0.0.1:{port}/start")
+    print(f"   GET  http://127.0.0.1:{port}/health")
+    print()
+    print("Voice UI: serve the frontend/ folder (see frontend/README.md)")
+    print("  Set AGENT_SERVER_URL to this server's public URL when deploying UI")
+    print()
 
     main()
 

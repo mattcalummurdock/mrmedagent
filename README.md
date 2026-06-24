@@ -1,64 +1,62 @@
 # mrmedagent
 
-Sarah — MrMed voice agent (Gemini Live + Exotel + embedded Cube.js medicine tools).
+Sarah — MrMed voice agent (Gemini Live + Daily.co browser voice + embedded Cube.js medicine tools).
 
 ## Architecture
 
 ```
-Exotel  --wss-->  Agent (Python + Cube.js on localhost:4000)  -->  Postgres
+frontend/  --POST {AGENT_SERVER_URL}/start-->  Agent (Cloud Run)  --Daily WebRTC-->  Browser
+                                                      |
+                                                      +--> Cube.js (localhost:4000) --> Postgres
 ```
 
-Cube **always** runs locally inside the agent process tree (`cube_service.py` → `cube/` on port 4000). Tool calls hit `http://127.0.0.1:4000/cubejs-api/v1/load` — there is no external Cube service.
+- **Agent** (`server.py`) — API only: `POST /start` creates a Daily room and runs Sarah.
+- **Frontend** (`frontend/`) — separate deployable UI. Set `AGENT_SERVER_URL` to the agent's public URL.
 
-`CUBEJS_API_SECRET` must match the embedded Cube server. The client signs a short-lived JWT for `/load` when `CUBEJS_DEV_MODE=false`.
-
-## Local dev (Exotel + ngrok)
+## Frontend (voice UI)
 
 ```bash
-cp .env.example .env
-# fill Vertex, Exotel, CUBEJS_DB_*, CUBEJS_API_SECRET
-cd cube && npm ci && cd ..
-uv sync
-uv run server.py -t exotel
+cd frontend
+cp config.example.js config.js
+# Set agentServerUrl in config.js to your Cloud Run agent URL
+
+python3 -m http.server 3000
+# Open http://localhost:3000
 ```
 
-## Local dev (browser WebRTC)
+**Cloud Run frontend:** set env `AGENT_SERVER_URL=https://your-agent.run.app` — see `frontend/README.md`.
+
+## Agent local dev (WSL on Windows)
+
+`daily-python` does not run on native Windows. Use WSL:
 
 ```bash
-uv run server.py
-# http://127.0.0.1:7860/client
+wsl bash scripts/wsl-setup.sh
+wsl bash scripts/wsl-start.sh
 ```
 
-## Docker / Cloud Run
+Required in `.env`: `DAILY_API_KEY`, `GOOGLE_VERTEX_CREDENTIALS`, `GOOGLE_CLOUD_PROJECT_ID`, Cube/DB vars.
+
+## Docker / Cloud Run (agent)
 
 ```bash
 docker build -t mrmed-agent .
 docker run -p 8080:8080 --env-file .env -e PORT=8080 mrmed-agent
 ```
 
-Single container: Node 20 + Cube schema + Python agent. No separate mrmedcube deploy.
-
 | Setting | Value |
 |---------|--------|
-| Agent port | `8080` (Cloud Run `PORT`) |
-| Cube port | `4000` (localhost only, inside container) |
+| Agent port | `8080` |
+| Cube port | `4000` (localhost inside container) |
 | Memory | `2 GiB`+ |
-| Timeout | `3600`s |
 
-Env: see `.env.cloudrun.example`. Set `AGENT_PUBLIC_URL` for Exotel `wss://<host>/ws`.
-
-## GitHub Actions
-
-Workflow: `.github/workflows/google-cloudrun-docker.yml`
+Env: `.env.cloudrun.example` — include `DAILY_API_KEY`.
 
 ## Layout
 
 | Path | Role |
 |------|------|
-| `server.py` | Pipecat + FastAPI runner |
-| `cube_config.py` | Hardcoded localhost Cube URL |
-| `cube_service.py` | Starts embedded Cube.js subprocess |
-| `cube/` | Cube.js server (schema, `cube.js`, npm deps) |
-| `tools/` | Gemini function tools (medicine lookup) |
-| `scripts/cube_tools.py` | Cube.js HTTP client (localhost only) |
-| `postProcessor.py` | Post-call Groq + Postgres CRM |
+| `server.py` | Agent API (`POST /start`, `/health`) |
+| `daily_utils.py` | Daily room creation |
+| `frontend/` | **Voice UI** (deploy separately) |
+| `cube/`, `tools/`, `postProcessor.py` | Agent internals (unchanged) |

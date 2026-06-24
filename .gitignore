@@ -1,4 +1,5 @@
 .venv/
+.wsl-venv/
 .env
 .env.cloudrun
 *.log
