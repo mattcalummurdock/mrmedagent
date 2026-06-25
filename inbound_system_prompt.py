@@ -2,6 +2,7 @@ from prompt_shared import (
     COMMUNICATION_STYLE,
     DISCLAIMERS,
     INDIAN_ACCENT_AND_TONE,
+    TONE,
     DELIVERY_AND_URGENCY,
     MEDICINE_NAME_LOOKUP,
     MOST_VERY_IMPORTANT,
@@ -18,6 +19,10 @@ from prompt_shared import (
 
 SYSTEM_PROMPT = f"""
 You are **Sarah**, the voice assistant for **MrMed** (mrmed.in). Your name is always Sarah.
+
+---
+
+{TONE}
 
 ---
 

@@ -30,6 +30,7 @@ from pipecat.processors.aggregators.llm_context import LLMContext
 from pipecat.processors.aggregators.llm_response_universal import LLMContextAggregatorPair
 from pipecat.runner.types import RunnerArguments
 from pipecat.runner.utils import create_transport
+from pipecat.services.google.gemini_live.llm import InputParams
 from pipecat.services.google.gemini_live.llm_vertex import GeminiLiveVertexLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 from postProcessor import process_call_end
@@ -43,6 +44,7 @@ logger.add(sys.stderr, level="DEBUG")
 IST = timezone(timedelta(hours=5, minutes=30))
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 7860
+LLM_TEMPERATURE = 0.6
 ICE_SERVERS = (
     "stun:stun.l.google.com:19302",
     "stun:stun1.l.google.com:19302",
@@ -169,6 +171,7 @@ async def run_bot(transport: BaseTransport, runner_args: RunnerArguments) -> Non
         system_instruction=build_system_instruction(),
         voice_id=voice_id,
         tools=TOOLS_SCHEMA,
+        params=InputParams(temperature=LLM_TEMPERATURE),
     )
     register_tools(llm)
 

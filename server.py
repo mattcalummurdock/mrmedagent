@@ -39,6 +39,7 @@ from pipecat.processors.aggregators.llm_response_universal import LLMContextAggr
 from pipecat.runner.types import RunnerArguments, SmallWebRTCRunnerArguments
 from pipecat.runner.utils import create_transport, parse_telephony_websocket
 from pipecat.serializers.exotel import ExotelFrameSerializer
+from pipecat.services.google.gemini_live.llm import InputParams
 from pipecat.services.google.gemini_live.llm_vertex import GeminiLiveVertexLLMService
 from pipecat.transports.base_transport import BaseTransport, TransportParams
 try:
@@ -55,6 +56,7 @@ logger.add(sys.stderr, level="DEBUG")
 
 
 DEFAULT_PORT = 7860
+LLM_TEMPERATURE = 0.6
 IST = timezone(timedelta(hours=5, minutes=30))
 _ngrok_tunnel = None
 
@@ -449,6 +451,7 @@ async def run_bot(
         system_instruction=build_system_instruction(session),
         voice_id=voice_id,
         tools=TOOLS_SCHEMA,
+        params=InputParams(temperature=LLM_TEMPERATURE),
     )
     register_tools(llm)
 
