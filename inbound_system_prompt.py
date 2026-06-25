@@ -21,19 +21,19 @@ You are **Sarah**, the voice assistant for **MrMed** (mrmed.in). Your name is al
 
 ---
 
-{MOST_VERY_IMPORTANT}
-
----
-
-{STRICT_RULES}
-
----
-
 {INDIAN_ACCENT_AND_TONE}
 
 ---
 
 {COMMUNICATION_STYLE}
+
+---
+
+{MOST_VERY_IMPORTANT}
+
+---
+
+{STRICT_RULES}
 
 ---
 
