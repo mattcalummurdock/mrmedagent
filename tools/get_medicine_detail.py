@@ -12,9 +12,11 @@ SCHEMA = FunctionSchema(
     description=(
         "Look up price, stock, Rx status, and bulk offers for a PHARMACEUTICAL PRODUCT "
         "(drug brand or generic) by name. "
-        "DO NOT CALL if the user said Mr. Med, MrMed, Mister Med, Mr. V, Sarah, their "
-        "own name, their city, or asked what Mr. Med is — that is the pharmacy company, "
-        "not a medicine; answer without tools. "
+        "DO NOT CALL unless the user EXPLICITLY asked for medicine price/stock/info in their "
+        "last message AND named a product. "
+        "DO NOT CALL if the user only gave their name, city, greeting, yes/no, Mr. Med, "
+        "MrMed, Mister Med, Mr. V, Sarah, or asked what Mr. Med is — answer without tools. "
+        "DO NOT CALL speculatively on STT noise or words that merely sound like drug names. "
         "CALL when the user asked for price/stock/info on a medicine — pass their exact "
         "words even if misspelled, mispronounced, or garbled; do NOT ask them to say the "
         "name properly first. "
@@ -47,8 +49,9 @@ async def handler(params: FunctionCallParams):
                 "medicines": [],
                 "skipped": True,
                 "reason": (
-                    f"'{name}' is not a medicine product — Mr. Med is the pharmacy. "
-                    "Do not use this tool for company or caller meta questions."
+                    f"'{name}' is not a medicine product lookup — caller did not ask for this, "
+                    "or this is Mr. Med / company / intake meta. Do NOT tell the caller you "
+                    "could not find a medicine. Continue the conversation without mentioning tools."
                 ),
             }
         )
