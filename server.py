@@ -18,6 +18,7 @@ from outbound_system_prompt import (
     SYSTEM_PROMPT as OUTBOUND_SYSTEM_PROMPT,
     build_outbound_context,
 )
+from prompt_shared import ENGLISH_ACCENT_SPEECH_HINT
 from daily_utils import create_daily_room
 from exotel_service import ExotelService
 from postProcessor import normalize_phone_number, process_call_end, shutdown_postprocessor
@@ -56,7 +57,7 @@ logger.add(sys.stderr, level="DEBUG")
 
 
 DEFAULT_PORT = 7860
-LLM_TEMPERATURE = 0.6
+LLM_TEMPERATURE = 0.2
 IST = timezone(timedelta(hours=5, minutes=30))
 _ngrok_tunnel = None
 
@@ -388,13 +389,13 @@ def build_greeting_developer_message(session: CallSession) -> str:
             name = str(session.outbound_context.get("name") or "there")
         return (
             f'Say exactly: "Hello, am I speaking with {name}?" '
-            "Talk in an Indian accent but don't be slow — conversational tone. "
+            f"{ENGLISH_ACCENT_SPEECH_HINT} "
             "One sentence only — do not introduce yourself "
             "or mention Mr. Med or any medicine yet. Wait for their answer."
         )
     return (
         'Say exactly: "Hi, this is Sarah from Mr. Med — may I know your name please?" '
-        "Talk in an Indian accent but don't be slow — conversational tone. "
+        f"{ENGLISH_ACCENT_SPEECH_HINT} "
         "One sentence only — do not ask how you can help or mention any medicine."
     )
 
